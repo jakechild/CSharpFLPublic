@@ -12,7 +12,7 @@ namespace MathApp
                     c += a;
                 }
             }
-            int diff = a - b + 1;
+            int diff = a - b;
             return diff;
         }
 

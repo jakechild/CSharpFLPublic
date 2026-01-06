@@ -85,9 +85,8 @@ namespace MathApp.Tests
         [Fact]
         public void SubtractionTest2()
         {
-            //int result = MathApp.MathOperations.Subtract(6, 4);
             int result = MathApp.MathOperations.Subtract(4, 6);
-            Assert.Equal(2, result);
+            Assert.Equal(-2, result);
         }
 
         [Fact]
