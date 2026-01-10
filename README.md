@@ -2,6 +2,20 @@
 
 CSharpFL is a sample C# solution that demonstrates automated spectrum-based fault localization (SBFL). The `SBFLApp` console utility instruments the unit tests, executes them, collects coverage data, and ranks potentially faulty statements with several well-known SBFL metrics.
 
+ 
+![Release Download](https://img.shields.io/github/downloads/JakeChild/CSharpFLPublic/total?style=flat-square)
+[![Release Version](https://img.shields.io/github/v/release/JakeChild/CSharpFLPublic?style=flat-square)](https://github.com/JakeChild/CSharpFLPublic/releases/latest)
+
+[![GitHub license](https://img.shields.io/github/license/JakeChild/CSharpFLPublic?style=flat-square)](LICENSE)
+![GitHub Repo size](https://img.shields.io/github/repo-size/JakeChild/CSharpFLPublic?style=flat-square&color=3cb371)
+[![GitHub Repo Languages](https://img.shields.io/github/languages/top/JakeChild/CSharpFLPublic?style=flat-square)](https://github.com/JakeChild/CSharpFLPublic/search?l=c%23)
+[![NET 8.0](https://img.shields.io/badge/dotnet-7.0-purple.svg?style=flat-square&color=512bd4)](https://learn.microsoft.com/zh-cn/dotnet/core/whats-new/dotnet-8)
+[![C# 11](https://img.shields.io/badge/c%23-11-brightgreen.svg?style=flat-square&color=6da86a)](https://learn.microsoft.com/zh-cn/dotnet/csharp/whats-new/csharp-11)
+
+[![.NET Build Status](https://github.com/jakechild/CSharpFLPublic/actions/workflows/dotnet.yml/badge.svg)](https://github.com/jakechild/CSharpFLPublic/actions/workflows/dotnet.yml)
+
+
+
 ## Repository layout
 - **MathApp/** – Minimal console application used as the subject under test. `MathOperations.cs` contains the arithmetic routines exercised by the tests, and `SeriesOperations.cs` provides richer sequence and statistics helpers for multi-file experimentation.
 - **MathApp.Tests/** – xUnit test project with addition, subtraction, and series-analysis scenarios. Some subtraction tests intentionally fail so that the fault-localization workflow has both passing and failing executions to analyze.
