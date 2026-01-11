@@ -1,3 +1,4 @@
+using System;
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -17,7 +18,7 @@ namespace SBFLApp
         /// <returns>Null if this is a coverage statement, the original statement if it isn't.</returns>
         public override SyntaxNode? VisitExpressionStatement(ExpressionStatementSyntax node)
         {
-            // If this is a coverage statements, 
+            // If this is a coverage statements,
             if (IsCoverageLoggingStatement(node))
             {
                 // Remove the statement
@@ -35,27 +36,23 @@ namespace SBFLApp
         /// <returns>True if this is a coverage statement.  False otherwise.</returns>
         private static bool IsCoverageLoggingStatement(ExpressionStatementSyntax node)
         {
-            // Verify this is an actual statement of executable code.
             if (node.Expression is not InvocationExpressionSyntax invocation ||
                 invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
             {
                 return false;
             }
 
-            // If this statement isn't a coverage statement, return false.
-            if (!string.Equals(memberAccess.ToString(), "System.IO.File.AppendAllText", StringComparison.Ordinal))
+            if (!IsCoverageLogger(memberAccess))
             {
                 return false;
             }
 
-            // Verify there are two arguments being passed to the AppendAllText method.
             var arguments = invocation.ArgumentList.Arguments;
             if (arguments.Count != 2)
             {
                 return false;
             }
 
-            // Verify the first argument, which should be the coverage file name, ends with ".coverage"
             if (arguments[0].Expression is LiteralExpressionSyntax literal &&
                 literal.IsKind(SyntaxKind.StringLiteralExpression))
             {
@@ -64,6 +61,14 @@ namespace SBFLApp
             }
 
             return false;
+        }
+
+        private static bool IsCoverageLogger(MemberAccessExpressionSyntax memberAccess)
+        {
+            var target = memberAccess.ToString();
+            return target == "System.IO.File.AppendAllText"
+                || target == "SBFLApp.CoverageLogger.Log"
+                || target == "CoverageLogger.Log";
         }
     }
 }

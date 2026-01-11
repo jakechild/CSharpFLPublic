@@ -18,7 +18,8 @@ class Sample
 {
     void Method()
     {
-        System.IO.File.AppendAllText("test.coverage.tmp", "data");
+        SBFLApp.CoverageLogger.Log("test.coverage.tmp", "data");
+        System.IO.File.AppendAllText("test.coverage.tmp", "legacy");
         Console.WriteLine("Hello");
     }
 }
@@ -30,6 +31,7 @@ class Sample
             var updatedContent = File.ReadAllText(filePath);
 
             Assert.DoesNotContain("AppendAllText", updatedContent, StringComparison.Ordinal);
+            Assert.DoesNotContain("CoverageLogger.Log", updatedContent, StringComparison.Ordinal);
             Assert.Contains("Console.WriteLine(\"Hello\");", updatedContent, StringComparison.Ordinal);
         }
         finally

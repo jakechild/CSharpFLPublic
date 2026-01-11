@@ -83,7 +83,7 @@ namespace SBFLApp
             {
                 // Skip instrumentation if this statement is already a logging statement
                 var statementText = statement.ToString();
-                if (statementText.Contains("System.IO.File.AppendAllText"))
+                if (ContainsCoverageLogger(statementText))
                 {
                     //TODO: Does this GUID need to be added to the _guidCollector?
                     newStatements.Add(statement);
@@ -98,7 +98,7 @@ namespace SBFLApp
 
                 // Create the statement to be added to the code.
                 var logStatement = SyntaxFactory.ParseStatement(
-                    $"System.IO.File.AppendAllText(\"{EscapeString(coverageFilePath)}\", \"{guid}\" + System.Environment.NewLine);"
+                    $"SBFLApp.CoverageLogger.Log(\"{EscapeString(coverageFilePath)}\", \"{guid}\");"
                 );
 
                 // Add the guid, qualified method name, and the source file name to the GUID mapping store.
@@ -155,6 +155,12 @@ namespace SBFLApp
             return value
                 .Replace("\\", "\\\\")
                 .Replace("\"", "\\\"");
+        }
+
+        private static bool ContainsCoverageLogger(string statementText)
+        {
+            return statementText.Contains("SBFLApp.CoverageLogger.Log", StringComparison.Ordinal)
+                || statementText.Contains("System.IO.File.AppendAllText", StringComparison.Ordinal);
         }
     }
 }

@@ -35,6 +35,8 @@ namespace SBFLApp
                 return;
             }
 
+            ProjectReferenceManager.EnsureCoverageLoggerReference(arguments.ProjectUnderTestFile.FullName);
+
             EnsureProductionInstrumentation(productionSourceFiles, TemporaryCoverageFileName, arguments.ResetRequested);
 
             // Run the tests and collect the pass/fail data.
@@ -363,7 +365,9 @@ namespace SBFLApp
 
         private static bool ContainsCoverageInstrumentation(string sourceCode)
         {
-            return sourceCode.Contains("System.IO.File.AppendAllText", StringComparison.Ordinal);
+            return sourceCode.Contains("SBFLApp.CoverageLogger.Log", StringComparison.Ordinal)
+                || sourceCode.Contains("CoverageLogger.Log", StringComparison.Ordinal)
+                || sourceCode.Contains("System.IO.File.AppendAllText", StringComparison.Ordinal);
         }
 
         private static void DeleteCoverageFile(string coverageFile)

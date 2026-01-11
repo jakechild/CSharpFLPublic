@@ -1,3 +1,4 @@
+using System;
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -26,12 +27,12 @@ namespace SBFLApp
         public override SyntaxNode VisitInvocationExpression(InvocationExpressionSyntax node)
         {
             // If this isn't a coverage statement, then return the original node.
-            if (!IsCoverageLogInvocation(node))
+            if (!TryGetCoverageInvocationKind(node, out var invocationKind))
             {
                 return base.VisitInvocationExpression(node) ?? node;
             }
 
-            // Verify there are two arguments being passed into the AppendAllText coverage statement.
+            // Verify there are two arguments being passed into the coverage statement.
             var argumentList = node.ArgumentList;
             if (argumentList.Arguments.Count < 2)
             {
@@ -49,17 +50,20 @@ namespace SBFLApp
 
             updatedArguments = updatedArguments.Replace(updatedArguments[0], firstArgument);
 
-            var secondArgument = updatedArguments[1];
-            if (!ContainsEnvironmentNewLine(secondArgument.Expression))
+            if (invocationKind == CoverageInvocationKind.AppendAllText)
             {
-                var newlineExpression = SyntaxFactory.ParseExpression("System.Environment.NewLine");
-                var appendedExpression = SyntaxFactory.BinaryExpression(
-                    SyntaxKind.AddExpression,
-                    (ExpressionSyntax)secondArgument.Expression,
-                    newlineExpression);
+                var secondArgument = updatedArguments[1];
+                if (!ContainsEnvironmentNewLine(secondArgument.Expression))
+                {
+                    var newlineExpression = SyntaxFactory.ParseExpression("System.Environment.NewLine");
+                    var appendedExpression = SyntaxFactory.BinaryExpression(
+                        SyntaxKind.AddExpression,
+                        (ExpressionSyntax)secondArgument.Expression,
+                        newlineExpression);
 
-                var updatedSecondArgument = secondArgument.WithExpression(appendedExpression);
-                updatedArguments = updatedArguments.Replace(secondArgument, updatedSecondArgument);
+                    var updatedSecondArgument = secondArgument.WithExpression(appendedExpression);
+                    updatedArguments = updatedArguments.Replace(secondArgument, updatedSecondArgument);
+                }
             }
 
             var updatedArgumentList = argumentList.WithArguments(updatedArguments);
@@ -72,15 +76,29 @@ namespace SBFLApp
         /// </summary>
         /// <param name="node"></param>
         /// <returns></returns>
-        private static bool IsCoverageLogInvocation(InvocationExpressionSyntax node)
+        private static bool TryGetCoverageInvocationKind(InvocationExpressionSyntax node, out CoverageInvocationKind invocationKind)
         {
+            invocationKind = CoverageInvocationKind.CoverageLogger;
+
             if (node.Expression is not MemberAccessExpressionSyntax memberAccess)
             {
                 return false;
             }
 
             var target = memberAccess.ToString();
-            return target == "System.IO.File.AppendAllText";
+            return target switch
+            {
+                "System.IO.File.AppendAllText" => AssignKind(CoverageInvocationKind.AppendAllText, out invocationKind),
+                "SBFLApp.CoverageLogger.Log" => AssignKind(CoverageInvocationKind.CoverageLogger, out invocationKind),
+                "CoverageLogger.Log" => AssignKind(CoverageInvocationKind.CoverageLogger, out invocationKind),
+                _ => false
+            };
+        }
+
+        private static bool AssignKind(CoverageInvocationKind invocationKind, out CoverageInvocationKind output)
+        {
+            output = invocationKind;
+            return true;
         }
 
 
@@ -92,6 +110,12 @@ namespace SBFLApp
         private static bool ContainsEnvironmentNewLine(ExpressionSyntax expression)
         {
             return expression.ToString().Contains("Environment.NewLine", StringComparison.Ordinal);
+        }
+
+        private enum CoverageInvocationKind
+        {
+            AppendAllText,
+            CoverageLogger
         }
     }
 }
