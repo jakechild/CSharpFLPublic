@@ -3,7 +3,7 @@ name: .NET Build, Test & Publish
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "main" ]
 
 permissions:
   contents: write  # create releases + upload assets
