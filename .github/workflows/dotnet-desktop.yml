@@ -61,7 +61,7 @@ jobs:
       run: echo "Skipping Release. No release required."
         
     - name: Push changes to GitHub
-      if: steps.versionize.outcome == 'success'
+      if: ${{ steps.versionize.outcome == 'success' && matrix.configuration == 'Release' }}
       uses: ad-m/github-push-action@master
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
