@@ -1,9 +1,9 @@
 # This workflow will build a .NET application on push or pull request events to the master branch.
-name: .NET Build & Publish
+name: .NET Build, Test & Publish
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
 
 permissions:
   contents: write  # create releases + upload assets
