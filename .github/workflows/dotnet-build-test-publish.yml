@@ -40,18 +40,26 @@ jobs:
     - name: Test
       run: dotnet test -c Release --no-build --verbosity normal
 
-    #- name: Setup git
-    #  run: |
-    #    git config --local user.email "hello84037@gmail.com"
-    #    git config --local user.name "jakechild"
+    - name: Install Versionize
+      run: dotnet tool install --global Versionize
 
-    #- name: Install Versionize
-    #  run: dotnet tool install --global Versionize
+    - name: Versioning
+      id: versionize
+      run: versionize
+      continue-on-error: true
 
-    #- name: Versioning
-    #  id: versionize
-    #  run: versionize
-    #  continue-on-error: true
+    - name: Setup git
+      run: |
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+    - name: Push changes to GitHub
+      if: steps.versionize.outcome == 'success'
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: ${{ github.ref }}
+        tags: true
 
     # Publish a self-contained, single-file executable
     - name: Publish (single-file, self-contained)
