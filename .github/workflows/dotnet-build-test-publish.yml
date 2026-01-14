@@ -39,7 +39,12 @@ jobs:
 
     - name: Test
       run: dotnet test -c Release --no-build --verbosity normal
-
+      
+    - name: Setup git
+      run: |
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      
     - name: Install Versionize
       run: dotnet tool install --global Versionize
 
@@ -47,11 +52,6 @@ jobs:
       id: versionize
       run: versionize
       continue-on-error: true
-
-    - name: Setup git
-      run: |
-        git config --global user.name 'github-actions[bot]'
-        git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
     - name: Push changes to GitHub
       if: steps.versionize.outcome == 'success'
