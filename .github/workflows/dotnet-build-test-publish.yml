@@ -40,6 +40,7 @@ jobs:
     - name: Test
       run: dotnet test -c Release --no-build --verbosity normal
       
+    # Attempting to use a github bot.
     - name: Setup git
       run: |
         git config --global user.name 'github-actions[bot]'
