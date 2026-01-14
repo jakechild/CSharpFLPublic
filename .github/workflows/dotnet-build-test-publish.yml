@@ -54,13 +54,13 @@ jobs:
       run: versionize
       continue-on-error: true
 
-    - name: Push changes to GitHub
-      if: steps.versionize.outcome == 'success'
-      uses: ad-m/github-push-action@master
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        branch: ${{ github.ref }}
-        tags: true
+    # - name: Push changes to GitHub
+    #   if: steps.versionize.outcome == 'success'
+    #   uses: ad-m/github-push-action@master
+    #   with:
+    #     github_token: ${{ secrets.GITHUB_TOKEN }}
+    #     branch: ${{ github.ref }}
+    #     tags: true
 
     # Publish a self-contained, single-file executable
     - name: Publish (single-file, self-contained)
