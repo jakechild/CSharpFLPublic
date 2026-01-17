@@ -60,10 +60,12 @@ jobs:
         run: |
           mkdir -p dist
           executable="publish/${{ matrix.rid }}/SBFLApp"
+          extension=""
           if [[ "${{ matrix.rid }}" == "win-x64" ]]; then
             executable="publish/${{ matrix.rid }}/SBFLApp.exe"
+            extension=".exe"
           fi
-          cp "$executable" "dist/SBFLApp-${{ matrix.rid }}${executable##SBFLApp}"
+          cp "$executable" "dist/SBFLApp-${{ matrix.rid }}${extension}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
