@@ -40,7 +40,7 @@ jobs:
         run: dotnet tool install --global Versionize
 
       - name: Versionize
-        run: versionize --changelog-all
+        run: versionize
 
       - name: Push version commit and tag
         run: git push --follow-tags
