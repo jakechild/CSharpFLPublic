@@ -56,17 +56,20 @@ jobs:
             -p:EnableCompressionInSingleFile=true \
             -o publish/${{ matrix.rid }}
 
-      - name: Zip published output
+      - name: Collect executable
         run: |
-          cd publish/${{ matrix.rid }}
-          zip -r ../../SBFLApp-${{ matrix.rid }}.zip .
-          cd -
+          mkdir -p dist
+          executable="publish/${{ matrix.rid }}/SBFLApp"
+          if [[ "${{ matrix.rid }}" == "win-x64" ]]; then
+            executable="publish/${{ matrix.rid }}/SBFLApp.exe"
+          fi
+          cp "$executable" "dist/SBFLApp-${{ matrix.rid }}${executable##SBFLApp}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: SBFLApp-${{ matrix.rid }}
-          path: SBFLApp-${{ matrix.rid }}.zip
+          path: dist/SBFLApp-${{ matrix.rid }}*
 
   release:
     runs-on: ubuntu-latest
@@ -88,4 +91,4 @@ jobs:
           name: ${{ needs.publish.outputs.tag }}
           generate_release_notes: true
           files: |
-            artifacts/**/SBFLApp-*.zip
+            artifacts/**/SBFLApp-*
