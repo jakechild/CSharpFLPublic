@@ -474,7 +474,7 @@ namespace SBFLApp
                 }
                 else
                 {
-                    ConsoleLogger.Info($"No coverage data was generated, {finalCoverageFileName} was not created.");
+                    ConsoleLogger.Warning($"No coverage data was generated, {finalCoverageFileName} was not created.");
                 }
             }
             catch (IOException ex)
@@ -593,6 +593,7 @@ namespace SBFLApp
                 startInfo.ArgumentList.Add(filter);
                 startInfo.ArgumentList.Add("--no-build");
                 startInfo.ArgumentList.Add("--nologo");
+                startInfo.ArgumentList.Add("--verbosity:q");
 
                 using Process? process = Process.Start(startInfo);
                 if (process is null)
