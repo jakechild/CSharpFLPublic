@@ -26,6 +26,11 @@ namespace SBFLApp
 
             // Get a list of the tests in the test project directory.
             var discoveredTests = GetListOfTests(arguments.TestProjectFile.DirectoryName ?? string.Empty);
+            var selectedTests = FilterTests(discoveredTests, arguments.TestName);
+            if (selectedTests == null || selectedTests.Count == 0)
+            {
+                return;
+            }
 
             // Get a list of files to add coverage statements to.
             var productionSourceFiles = DiscoverProductionSourceFiles(arguments.ProjectUnderTestFile.DirectoryName ?? string.Empty);
@@ -38,9 +43,9 @@ namespace SBFLApp
             EnsureProductionInstrumentation(productionSourceFiles, TemporaryCoverageFileName, arguments.ResetRequested);
 
             // Run the tests and collect the pass/fail data.
-            var testPassFailData = RunTests(discoveredTests, arguments.TestProjectFile.FullName, arguments.VerboseRequested);
+            var testPassFailData = RunTests(selectedTests, arguments.TestProjectFile.FullName, arguments.VerboseRequested);
 
-            var testCoverage = BuildTestCoverage(discoveredTests);
+            var testCoverage = BuildTestCoverage(selectedTests);
 
             Rank rank = new(testCoverage, testPassFailData);
             rank.CalculateTarantula();
@@ -118,6 +123,49 @@ namespace SBFLApp
             }
 
             return discoveredTests;
+        }
+
+        private static IReadOnlyList<DiscoveredTest>? FilterTests(
+            IReadOnlyList<DiscoveredTest> discoveredTests,
+            string? testFilter)
+        {
+            if (string.IsNullOrWhiteSpace(testFilter))
+            {
+                return discoveredTests;
+            }
+
+            var exactMatches = discoveredTests
+                .Where(test => string.Equals(test.FullyQualifiedName, testFilter, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (exactMatches.Count == 1)
+            {
+                return exactMatches;
+            }
+
+            if (exactMatches.Count > 1)
+            {
+                ConsoleLogger.Error($"Multiple tests matched '{testFilter}'. Provide a fully qualified test name.");
+                return null;
+            }
+
+            var containsMatches = discoveredTests
+                .Where(test => test.FullyQualifiedName.Contains(testFilter, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (containsMatches.Count == 1)
+            {
+                return containsMatches;
+            }
+
+            if (containsMatches.Count > 1)
+            {
+                ConsoleLogger.Error($"Multiple tests matched '{testFilter}'. Provide a fully qualified test name.");
+                return null;
+            }
+
+            ConsoleLogger.Error($"Test not found: {testFilter}");
+            return null;
         }
 
         /// <summary>
@@ -691,6 +739,7 @@ namespace SBFLApp
             public Rank.SuspiciousnessReportFormat ReportFormat { get; set; }
             public string? ReportPath { get; set; }
             public bool SummaryRequested { get; set; }
+            public string? TestName { get; set; }
 
             private CommandLineArguments()
             {
@@ -704,13 +753,14 @@ namespace SBFLApp
                 ReportFormat = Rank.SuspiciousnessReportFormat.Csv;
                 ReportPath = null;
                 SummaryRequested = false;
+                TestName = null;
             }
 
             public static CommandLineArguments? Parse(string[] args)
             {
                 if (args.Length < 3)
                 {
-                    ConsoleLogger.Warning("Usage: dotnet run <solutionDirectory> <testProjectName> <projectUnderTestName> [--reset (-r)] [--verbose (-v)] [--cleanup (-c)] [--top <count> (-t <count>)] [--report-format <csv|markdown>] [--report-path <file>] [--summary (-s)]");
+                    ConsoleLogger.Warning("Usage: dotnet run <solutionDirectory> <testProjectName> <projectUnderTestName> [--reset (-r)] [--verbose (-v)] [--cleanup (-c)] [--top <count> (-t <count>)] [--report-format <csv|markdown>] [--report-path <file>] [--summary (-s)] [--test <fullyQualifiedTestName>]");
                     return null;
                 }
 
@@ -784,6 +834,14 @@ namespace SBFLApp
                         case "--summary":
                         case "-s":
                             arguments.SummaryRequested = true;
+                            break;
+                        case "--test":
+                            if (!TryConsumeTestValue(queue, out var testName))
+                            {
+                                return false;
+                            }
+
+                            arguments.TestName = testName;
                             break;
                         case "--top":
                         case "-t":
@@ -875,6 +933,22 @@ namespace SBFLApp
                     return true;
                 }
 
+                if (option.StartsWith("--test=", StringComparison.OrdinalIgnoreCase))
+                {
+                    string value = option[(option.IndexOf('=') + 1)..];
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        arguments.TestName = value;
+                    }
+                    else
+                    {
+                        ConsoleLogger.Error("Invalid value for --test option.");
+                        return false;
+                    }
+
+                    return true;
+                }
+
                 return null;
             }
 
@@ -950,6 +1024,26 @@ namespace SBFLApp
                 if (string.IsNullOrWhiteSpace(path))
                 {
                     ConsoleLogger.Error("Invalid value for --report-path option.");
+                    return false;
+                }
+
+                return true;
+            }
+
+            private static bool TryConsumeTestValue(Queue<string> queue, out string testName)
+            {
+                testName = string.Empty;
+
+                if (queue.Count == 0)
+                {
+                    ConsoleLogger.Error("Missing value for --test option.");
+                    return false;
+                }
+
+                testName = queue.Dequeue();
+                if (string.IsNullOrWhiteSpace(testName))
+                {
+                    ConsoleLogger.Error("Invalid value for --test option.");
                     return false;
                 }
 
