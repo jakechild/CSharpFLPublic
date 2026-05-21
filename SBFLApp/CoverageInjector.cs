@@ -168,6 +168,30 @@ namespace SBFLApp
             return node.WithStatements(SyntaxFactory.List(newStatements));
         }
 
+        public override SyntaxNode VisitIfStatement(IfStatementSyntax node)
+        {
+            // 1. Handle the "then" statement (if body)
+            var updatedNode = node;
+            if (node.Statement is not BlockSyntax and not null)
+            {
+                // Wrap the single statement in a block so VisitBlock can instrument it
+                var newBlock = SyntaxFactory.Block(node.Statement);
+                updatedNode = updatedNode.WithStatement(newBlock);
+            }
+
+            // 2. Handle the "else" statement if it exists
+            if (updatedNode.Else != null && updatedNode.Else.Statement is not BlockSyntax and not IfStatementSyntax and not null)
+            {
+                // Wrap single-statement else bodies in a block. 
+                // We check 'and not IfStatementSyntax' so we don't mess up 'else if' chains.
+                var newBlock = SyntaxFactory.Block(updatedNode.Else.Statement);
+                updatedNode = updatedNode.WithElse(updatedNode.Else.WithStatement(newBlock));
+            }
+
+            // 3. Let the base rewriter continue visiting child nodes (which will now hit VisitBlock!)
+            return base.VisitIfStatement(updatedNode);
+        }
+
         /// <summary>
         /// Get the qualified name of the method.
         /// </summary>
