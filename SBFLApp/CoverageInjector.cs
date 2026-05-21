@@ -123,6 +123,51 @@ namespace SBFLApp
             return node.WithStatements(SyntaxFactory.List(newStatements));
         }
 
+        public override SyntaxNode VisitSwitchSection(SwitchSectionSyntax node)
+        {
+            var newStatements = new List<StatementSyntax>();
+
+            foreach (var statement in node.Statements)
+            {
+                // 1. Skip instrumentation if already logged
+                var statementText = statement.ToString();
+                if (statementText.Contains("System.IO.File.AppendAllText"))
+                {
+                    newStatements.Add(statement);
+                    continue;
+                }
+
+                // 2. Generate GUID and Path
+                var guid = Guid.NewGuid().ToString();
+                _guidCollector?.Add(guid);
+                var coverageFilePath = _coverageFileName ?? $"{_currentMethodName}.coverage";
+
+                // 3. Create log statement
+                var logStatement = SyntaxFactory.ParseStatement(
+                    $"System.IO.File.AppendAllText(\"{EscapeString(coverageFilePath)}\", \"{guid}\" + System.Environment.NewLine);"
+                );
+
+                // 4. Save mapping
+                var qualifiedName = GetQualifiedMethodName();
+                if (!string.IsNullOrEmpty(qualifiedName))
+                {
+                    var sourceFileName = string.IsNullOrWhiteSpace(_sourceFilePath)
+                        ? null
+                        : Path.GetFileName(_sourceFilePath);
+                    GuidMappingStore.AddMapping(guid, qualifiedName, sourceFileName);
+                }
+
+                // 5. Add log statement, then recursively visit the inner statement
+                newStatements.Add(logStatement);
+
+                var visitedStatement = (StatementSyntax)Visit(statement);
+                newStatements.Add(visitedStatement);
+            }
+
+            // Return the updated switch section with the instrumented statements
+            return node.WithStatements(SyntaxFactory.List(newStatements));
+        }
+
         /// <summary>
         /// Get the qualified name of the method.
         /// </summary>
