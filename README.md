@@ -54,6 +54,7 @@ Key behaviors:
   - `--report-format <csv|markdown>` switches between CSV and Markdown export formats.
   - `--report-path <file>` writes the report to a custom location.
   - `--summary` (or `-s`) prints the top results to the console (defaults to 10 when `--top` is omitted).
+  - `--test <fullyQualifiedTestName>` runs a single test instead of the full test suite.
 
 To discard instrumentation and delete generated coverage artifacts, provide the optional reset flag:
 
@@ -63,6 +64,12 @@ dotnet run --project SBFLApp/SBFLApp.csproj . MathApp.Tests MathApp --reset
 
 This cleans modified test sources, removes coverage files, and clears cached GUID mappings. Use `--verbose` (or pass `true` for the final argument) to stream the test output for each execution when additional verbosity is desired.
 
+To execute a specific test, pass the fully qualified test name:
+
+```bash
+dotnet run --project SBFLApp/SBFLApp.csproj . MathApp.Tests MathApp --test MathApp.Tests.MathTests.Subtract_WithPositiveNumbers_ReturnsCorrectDifference
+```
+
 ## Running the test suite
 The repository includes traditional unit tests as well as instrumentation hooks. Execute all tests with:
 
@@ -71,4 +78,3 @@ dotnet test
 ```
 
 The subtraction scenarios are expected to fail—they provide failing executions for the SBFL ranking.
-
