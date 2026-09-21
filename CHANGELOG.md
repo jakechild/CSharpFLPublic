@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.0.16"></a>
+## [1.0.16](https://www.github.com/jakechild/CSharpFLPublic/releases/tag/v1.0.16) (2026-09-21)
+
 <a name="1.0.15"></a>
 ## [1.0.15](https://www.github.com/jakechild/CSharpFLPublic/releases/tag/v1.0.15) (2026-05-21)
 
