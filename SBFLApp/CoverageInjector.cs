@@ -65,10 +65,49 @@ namespace SBFLApp
             if (_targetMethodName != null && node.Identifier.Text != _targetMethodName)
                 return node;
 
+            var previousMethod = _currentMethodName;
             _currentMethodName = node.Identifier.Text;
-            return base.VisitMethodDeclaration(node) ?? node;
+
+            var result = base.VisitMethodDeclaration(node);
+
+            _currentMethodName = previousMethod;
+            return result ?? node;
         }
 
+        public override SyntaxNode VisitLocalFunctionStatement(LocalFunctionStatementSyntax node)
+        {
+            var previousMethodName = _currentMethodName;
+            _currentMethodName = $"{previousMethodName}.{node.Identifier.Text}";
+
+            var result = base.VisitLocalFunctionStatement(node);
+
+            _currentMethodName = previousMethodName;
+            return result ?? node;
+        }
+
+        public override SyntaxNode VisitConstructorDeclaration(ConstructorDeclarationSyntax node)
+        {
+            var previousMethodName = _currentMethodName;
+            _currentMethodName = ".ctor";
+
+            var result = base.VisitConstructorDeclaration(node);
+
+            _currentMethodName = previousMethodName;
+            return result ?? node;
+        }
+
+        public override SyntaxNode VisitDestructorDeclaration(DestructorDeclarationSyntax node)
+        {
+            var previousMethodName = _currentMethodName;
+            _currentMethodName = $"~{node.Identifier.Text}";
+
+            var result = base.VisitDestructorDeclaration(node);
+
+            _currentMethodName = previousMethodName;
+            return result ?? node;
+        }
+
+ 
         /// <summary>
         /// Visit blocks and inject logging statements before each original statement
         /// </summary>
@@ -78,30 +117,34 @@ namespace SBFLApp
         {
             var newStatements = new List<StatementSyntax>();
 
-            // Go through all the statements in the node.
             foreach (var statement in node.Statements)
             {
-                // Skip instrumentation if this statement is already a logging statement
+                // Skip instrumentation if already logged
                 var statementText = statement.ToString();
                 if (statementText.Contains("System.IO.File.AppendAllText"))
                 {
-                    //TODO: Does this GUID need to be added to the _guidCollector?
                     newStatements.Add(statement);
                     continue;
                 }
 
-                // Generate a GUID for the instrumentation statement and add it to the list of GUIDs.
+                // Skip local functions from prefix logging; 
+                // their inner blocks will be visited and instrumented automatically.
+                if (statement is LocalFunctionStatementSyntax)
+                {
+                    newStatements.Add((StatementSyntax)Visit(statement));
+                    continue;
+                }
+
+                // Generate GUID and log statement
                 var guid = Guid.NewGuid().ToString();
                 _guidCollector?.Add(guid);
 
                 var coverageFilePath = _coverageFileName ?? $"{_currentMethodName}.coverage";
 
-                // Create the statement to be added to the code.
                 var logStatement = SyntaxFactory.ParseStatement(
                     $"System.IO.File.AppendAllText(\"{EscapeString(coverageFilePath)}\", \"{guid}\" + System.Environment.NewLine);"
                 );
 
-                // Add the guid, qualified method name, and the source file name to the GUID mapping store.
                 var qualifiedName = GetQualifiedMethodName();
                 if (!string.IsNullOrEmpty(qualifiedName))
                 {
@@ -111,17 +154,14 @@ namespace SBFLApp
                     GuidMappingStore.AddMapping(guid, qualifiedName, sourceFileName);
                 }
 
-                // Add the new log statement.
                 newStatements.Add(logStatement);
-
-                // Add the current statement after the log statement.
-                var visitedStatement = (StatementSyntax)Visit(statement);
-                newStatements.Add(visitedStatement);
+                newStatements.Add((StatementSyntax)Visit(statement));
             }
 
-            // Update the node with the new statements.  This creates a new node.
             return node.WithStatements(SyntaxFactory.List(newStatements));
         }
+
+        
 
         public override SyntaxNode VisitSwitchSection(SwitchSectionSyntax node)
         {
@@ -134,6 +174,13 @@ namespace SBFLApp
                 if (statementText.Contains("System.IO.File.AppendAllText"))
                 {
                     newStatements.Add(statement);
+                    continue;
+                }
+
+                // Skip local function declarations
+                if (statement is LocalFunctionStatementSyntax)
+                {
+                    newStatements.Add((StatementSyntax)Visit(statement));
                     continue;
                 }
 

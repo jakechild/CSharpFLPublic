@@ -620,55 +620,85 @@ namespace SBFLApp
             }
         }
 
+        /// <summary>
+        /// A function to run the unit test.  Be careful here as dotnet 10 SDK and later changed
+        /// how you need to run the tests.
+        /// </summary>
+        /// <param name="testProjectPath"></param>
+        /// <param name="fullyQualifiedTestName"></param>
+        /// <param name="verbose"></param>
+        /// <returns></returns>
         private static bool RunTest(string testProjectPath, string fullyQualifiedTestName, bool verbose = false)
         {
             ConsoleLogger.Info($"Running {fullyQualifiedTestName}...");
             try
             {
-                string filter = $"FullyQualifiedName~{fullyQualifiedTestName}";
-
                 var startInfo = new ProcessStartInfo("dotnet")
                 {
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true,
+                    // Set working directory to the target project to ensure relative paths resolve properly
+                    WorkingDirectory = Path.GetDirectoryName(testProjectPath) ?? string.Empty
                 };
+
+                // FIX 1: Universal compatibility.
+                // If your host machine or parent directory enforces MTP, set this to "vstest"
+                // because VSTest is supported by virtually all projects (.NET Framework, .NET Core 1.x-3.x, modern .NET).
+                // If neither is forced, you can remove this line completely and let the SDK resolve it.
+                startInfo.EnvironmentVariables["DOTNET_TEST_RUNNER"] = "vstest";
 
                 startInfo.ArgumentList.Add("test");
                 startInfo.ArgumentList.Add(testProjectPath);
-                startInfo.ArgumentList.Add("--filter");
-                startInfo.ArgumentList.Add(filter);
                 startInfo.ArgumentList.Add("--no-build");
                 startInfo.ArgumentList.Add("--nologo");
-                startInfo.ArgumentList.Add("--verbosity:q");
+                startInfo.ArgumentList.Add("--verbosity");
+                startInfo.ArgumentList.Add("quiet");
 
-                using Process? process = Process.Start(startInfo);
-                if (process is null)
+                // FIX 2: Exact matching.
+                // Use '=' instead of '~' so you don't inadvertently run sibling tests with similar names.
+                startInfo.ArgumentList.Add("--filter");
+                startInfo.ArgumentList.Add($"FullyQualifiedName={fullyQualifiedTestName}");
+
+                using Process? process = new Process { StartInfo = startInfo };
+
+                // FIX 3: Buffer output asynchronously to prevent OS pipe deadlocks
+                var outputBuilder = new System.Text.StringBuilder();
+                var errorBuilder = new System.Text.StringBuilder();
+
+                process.OutputDataReceived += (_, e) => { if (e.Data != null) outputBuilder.AppendLine(e.Data); };
+                process.ErrorDataReceived += (_, e) => { if (e.Data != null) errorBuilder.AppendLine(e.Data); };
+
+                if (!process.Start())
                 {
                     ConsoleLogger.Error("Failed to start test process.");
                     return false;
                 }
 
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+
                 bool exited = process.WaitForExit(30 * 1000);
                 if (!exited)
                 {
-                    ConsoleLogger.Warning("Process timed out. Killing the process...");
-                    process.Kill();
+                    ConsoleLogger.Warning("Process timed out. Killing the process tree...");
+                    process.Kill(entireProcessTree: true);
                     return false;
                 }
 
-                // Show the test output if the user desires it.
+                // Ensure asynchronous buffers finish flushing
+                process.WaitForExit();
+
                 if (verbose)
                 {
-                    string output = process.StandardOutput.ReadToEnd();
-                    string error = process.StandardError.ReadToEnd();
+                    string output = outputBuilder.ToString();
+                    string error = errorBuilder.ToString();
 
-                    Console.WriteLine(output);
-                    if (!string.IsNullOrEmpty(error))
-                    {
+                    if (!string.IsNullOrWhiteSpace(output))
+                        Console.WriteLine(output);
+                    if (!string.IsNullOrWhiteSpace(error))
                         Console.WriteLine(error);
-                    }
                 }
 
                 return process.ExitCode == 0;
