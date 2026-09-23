@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file. See [versio
 ## [1.0.14](https://www.github.com/jakechild/CSharpFLPublic/releases/tag/v1.0.14) (2026-05-21)
 
 <a name="1.0.13"></a>
+## [1.0.13](https://www.github.com/jakechild/CSharpFL/releases/tag/v1.0.13) (2026-05-21)
+
+<a name="1.0.13"></a>
 ## [1.0.13](https://www.github.com/jakechild/CSharpFLPublic/releases/tag/v1.0.13) (2026-05-21)
 
 <a name="1.0.12"></a>
