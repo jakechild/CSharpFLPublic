@@ -12,6 +12,11 @@ namespace SBFLApp
         private const int DefaultSummaryCount = 10;
         private static readonly string CoverageDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Coverage");
         private static readonly string TemporaryCoverageFileName = Path.Combine(CoverageDirectory, "__sbfl_current_test.coverage.tmp");
+        private static readonly string TestConfigFileName = Path.Combine(Path.GetTempPath(), "testconfig.json");
+
+        private static readonly CSharpParseOptions _parseOptions = new(
+            documentationMode: DocumentationMode.None
+        );
 
         static void Main(string[] args)
         {
@@ -43,7 +48,7 @@ namespace SBFLApp
             EnsureProductionInstrumentation(productionSourceFiles, TemporaryCoverageFileName, arguments.ResetRequested);
 
             // Run the tests and collect the pass/fail data.
-            var testPassFailData = RunTests(selectedTests, arguments.TestProjectFile.FullName, arguments.VerboseRequested);
+            var testPassFailData = RunTests(arguments.SolutionDirectory, selectedTests, arguments.TestProjectFile.FullName, arguments.VerboseRequested);
 
             var testCoverage = BuildTestCoverage(selectedTests);
 
@@ -54,7 +59,7 @@ namespace SBFLApp
             rank.CalculateOp2();
             rank.CalculateJaccard();
 
-            if(arguments.CleanupRequested)
+            if (arguments.CleanupRequested)
             {
                 ConsoleLogger.Info("Cleaning up the instrumentation data.");
                 Spectrum.ResetInstrumentation(productionSourceFiles);
@@ -183,7 +188,7 @@ namespace SBFLApp
                 // Read the source code for the current file.
                 string sourceCode = File.ReadAllText(file);
                 // Create the abstract syntax tree based off of the code.
-                var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+                var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, _parseOptions);
                 var root = syntaxTree.GetRoot();
 
                 // Go through each decsendant of the root node that is a method.
@@ -311,11 +316,15 @@ namespace SBFLApp
         /// <param name="testProjectPath">The path to the test csproj file.</param>
         /// <param name="verbose">If verbose is requested, the test output will be displayed.</param>
         private static Dictionary<string, bool> RunTests(
+            in string solutionDirectory,
             in IReadOnlyList<DiscoveredTest> tests,
             in string testProjectPath,
             in bool verbose = false)
         {
             ConsoleLogger.Info("Testing in progress...");
+
+            // Generate the testconfig.json file to make sure tests are not run in parallel.
+            GenerateTestConfig();
 
             var testPassFailData = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
@@ -334,7 +343,7 @@ namespace SBFLApp
                 string coverageFileName = Path.Combine(CoverageDirectory, $"{test.CoverageFileStem}.coverage");
 
                 // Run the test silently
-                bool passed = RunTest(testProjectPath, test.FullyQualifiedName, verbose);
+                bool passed = RunTest(solutionDirectory, testProjectPath, test.FullyQualifiedName, verbose);
                 testPassFailData[test.CoverageFileStem] = passed;
 
                 PromoteTemporaryCoverageFile(TemporaryCoverageFileName, coverageFileName);
@@ -344,6 +353,32 @@ namespace SBFLApp
             }
 
             return testPassFailData;
+        }
+
+        private static void GenerateTestConfig()
+        {
+            if (!File.Exists(TestConfigFileName))
+            {
+
+                try
+                {
+                    // Write modern MTP / MSTest configuration disabling parallel execution
+                    string configJson = """
+                        {
+                          "mstest": {
+                            "parallelism": {
+                              "enabled": false
+                            }
+                          }
+                        }
+                        """;
+                    File.WriteAllText(TestConfigFileName, configJson);
+                }
+                catch (Exception ex)
+                {
+                    ConsoleLogger.Error($"The testconfig.json file does not exist and we were unable to create it. {ex}");
+                }
+            }
         }
 
         /// <summary>
@@ -405,7 +440,7 @@ namespace SBFLApp
                 return;
             }
 
-            var root = CSharpSyntaxTree.ParseText(sourceCode).GetRoot();
+            var root = CSharpSyntaxTree.ParseText(sourceCode, _parseOptions).GetRoot();
             RewriteCoverageStatements(filePath, root, coverageFileName);
         }
 
@@ -482,7 +517,7 @@ namespace SBFLApp
 
             // Reload the code that was just written, and return the new root.
             var reloadedCode = File.ReadAllText(filePath);
-            return CSharpSyntaxTree.ParseText(reloadedCode).GetRoot();
+            return CSharpSyntaxTree.ParseText(reloadedCode, _parseOptions).GetRoot();
         }
 
         private static List<string> DiscoverProductionSourceFiles(string projectUnderTestDirectory)
@@ -516,7 +551,7 @@ namespace SBFLApp
                     File.Delete(finalCoverageFileName);
                 }
 
-                if(File.Exists(temporaryCoverageFileName))
+                if (File.Exists(temporaryCoverageFileName))
                 {
                     File.Move(temporaryCoverageFileName, finalCoverageFileName);
                 }
@@ -620,85 +655,122 @@ namespace SBFLApp
             }
         }
 
+
         /// <summary>
-        /// A function to run the unit test.  Be careful here as dotnet 10 SDK and later changed
-        /// how you need to run the tests.
+        /// Runs a single unit test by invoking the compiled MTP test executable directly.
         /// </summary>
-        /// <param name="testProjectPath"></param>
-        /// <param name="fullyQualifiedTestName"></param>
-        /// <param name="verbose"></param>
-        /// <returns></returns>
-        private static bool RunTest(string testProjectPath, string fullyQualifiedTestName, bool verbose = false)
+        /// <param name="testProjectPath">Path to the test project file (.csproj).</param>
+        /// <param name="fullyQualifiedTestName">Fully qualified test name to run (e.g. MyNamespace.MyClass.MyMethod).</param>
+        /// <param name="verbose">When true, enables detailed MTP output and streams lines in real-time.</param>
+        /// <param name="configuration">The build configuration (e.g., "Debug" or "Release").</param>
+        /// <returns>True if the test execution succeeded (exit code 0); otherwise, false.</returns>
+        private static bool RunTest(
+            string solutionDirectory,
+            string testProjectPath,
+            string fullyQualifiedTestName,
+            bool verbose = false,
+            string configuration = "Debug")
         {
-            ConsoleLogger.Info($"Running {fullyQualifiedTestName}...");
+            ConsoleLogger.Info($"Running {fullyQualifiedTestName} directly via MTP executable...");
             try
             {
-                var startInfo = new ProcessStartInfo("dotnet")
+                string projectDir = Path.GetDirectoryName(Path.GetFullPath(testProjectPath)) ?? string.Empty;
+                string projectName = Path.GetFileNameWithoutExtension(testProjectPath);
+
+                // 1. Locate the compiled test output binary
+                string binaryPath = FindTestBinary(solutionDirectory, projectName, configuration);
+                if (string.IsNullOrEmpty(binaryPath))
+                {
+                    ConsoleLogger.Error($"Could not find compiled test executable for '{projectName}' in configuration '{configuration}'. Ensure the project is built.");
+                    return false;
+                }
+
+                // 2. Prepare execution (run natively on Windows if .exe, otherwise via dotnet <file>.dll)
+                bool isNativeExe = binaryPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
+                string fileName = isNativeExe ? binaryPath : "dotnet";
+
+                var startInfo = new ProcessStartInfo(fileName)
                 {
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true,
-                    // Set working directory to the target project to ensure relative paths resolve properly
-                    WorkingDirectory = Path.GetDirectoryName(testProjectPath) ?? string.Empty
+                    WorkingDirectory = Path.GetDirectoryName(binaryPath) ?? projectDir
                 };
 
-                // FIX 1: Universal compatibility.
-                // If your host machine or parent directory enforces MTP, set this to "vstest"
-                // because VSTest is supported by virtually all projects (.NET Framework, .NET Core 1.x-3.x, modern .NET).
-                // If neither is forced, you can remove this line completely and let the SDK resolve it.
-                startInfo.EnvironmentVariables["DOTNET_TEST_RUNNER"] = "vstest";
+                if (!isNativeExe)
+                {
+                    startInfo.ArgumentList.Add(binaryPath);
+                }
 
-                startInfo.ArgumentList.Add("test");
-                startInfo.ArgumentList.Add(testProjectPath);
-                startInfo.ArgumentList.Add("--no-build");
-                startInfo.ArgumentList.Add("--nologo");
-                startInfo.ArgumentList.Add("--verbosity");
-                startInfo.ArgumentList.Add("quiet");
+                // Pass configuration to MTP
+                startInfo.ArgumentList.Add("--config-file");
+                startInfo.ArgumentList.Add(TestConfigFileName);
 
-                // FIX 2: Exact matching.
-                // Use '=' instead of '~' so you don't inadvertently run sibling tests with similar names.
+                // Don't print the test process banner
+                startInfo.ArgumentList.Add("--no-banner");
+
                 startInfo.ArgumentList.Add("--filter");
                 startInfo.ArgumentList.Add($"FullyQualifiedName={fullyQualifiedTestName}");
 
+                if (verbose)
+                {
+                    startInfo.ArgumentList.Add("--output");
+                    startInfo.ArgumentList.Add("detailed");
+                }
+
                 using Process? process = new Process { StartInfo = startInfo };
 
-                // FIX 3: Buffer output asynchronously to prevent OS pipe deadlocks
                 var outputBuilder = new System.Text.StringBuilder();
                 var errorBuilder = new System.Text.StringBuilder();
 
-                process.OutputDataReceived += (_, e) => { if (e.Data != null) outputBuilder.AppendLine(e.Data); };
-                process.ErrorDataReceived += (_, e) => { if (e.Data != null) errorBuilder.AppendLine(e.Data); };
+                process.OutputDataReceived += (_, e) =>
+                {
+                    if (e.Data == null) return;
+                    outputBuilder.AppendLine(e.Data);
+                    if (verbose)
+                    {
+                        Console.WriteLine(e.Data);
+                    }
+                };
+
+                process.ErrorDataReceived += (_, e) =>
+                {
+                    if (e.Data == null) return;
+                    errorBuilder.AppendLine(e.Data);
+                    if (verbose)
+                    {
+                        Console.Error.WriteLine(e.Data);
+                    }
+                };
 
                 if (!process.Start())
                 {
-                    ConsoleLogger.Error("Failed to start test process.");
+                    ConsoleLogger.Error("Failed to start test executable.");
                     return false;
                 }
 
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
 
-                bool exited = process.WaitForExit(30 * 1000);
-                if (!exited)
+                if (!process.WaitForExit(30 * 1000))
                 {
                     ConsoleLogger.Warning("Process timed out. Killing the process tree...");
                     process.Kill(entireProcessTree: true);
                     return false;
                 }
 
-                // Ensure asynchronous buffers finish flushing
                 process.WaitForExit();
 
-                if (verbose)
+                if (!verbose && process.ExitCode != 0)
                 {
-                    string output = outputBuilder.ToString();
-                    string error = errorBuilder.ToString();
+                    string err = errorBuilder.ToString();
+                    string outStr = outputBuilder.ToString();
 
-                    if (!string.IsNullOrWhiteSpace(output))
-                        Console.WriteLine(output);
-                    if (!string.IsNullOrWhiteSpace(error))
-                        Console.WriteLine(error);
+                    if (!string.IsNullOrWhiteSpace(err))
+                        ConsoleLogger.Error(err);
+                    else if (!string.IsNullOrWhiteSpace(outStr))
+                        ConsoleLogger.Error(outStr);
                 }
 
                 return process.ExitCode == 0;
@@ -708,6 +780,55 @@ namespace SBFLApp
                 ConsoleLogger.Error($"Error running test: {ex.Message}");
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Searches the entire solution directory for the compiled test binary (.exe or .dll)
+        /// corresponding to the target project and build configuration.
+        /// </summary>
+        /// <param name="solutionDir">The root solution folder to search.</param>
+        /// <param name="projectName">The target test project name (without extension).</param>
+        /// <param name="configuration">The build configuration (e.g., "Debug" or "Release").</param>
+        /// <returns>The full path to the binary if found; otherwise, string.Empty.</returns>
+        private static string FindTestBinary(string solutionDir, string projectName, string configuration)
+        {
+            if (string.IsNullOrWhiteSpace(solutionDir) || !Directory.Exists(solutionDir))
+            {
+                return string.Empty;
+            }
+
+            var enumerationOptions = new EnumerationOptions
+            {
+                RecurseSubdirectories = true,
+                MatchCasing = MatchCasing.CaseInsensitive,
+                IgnoreInaccessible = true,
+                AttributesToSkip = FileAttributes.ReparsePoint // Prevent symlink infinite loops
+            };
+
+            // 1. Gather matching files across the solution
+            var candidateFiles = Directory.EnumerateFiles(solutionDir, $"{projectName}.*", enumerationOptions)
+                .Where(filePath =>
+                {
+                    string ext = Path.GetExtension(filePath);
+                    if (!ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) &&
+                        !ext.Equals(".dll", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return false;
+                    }
+                    return true;
+                })
+                .ToList();
+
+            if (candidateFiles.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            // 2. Prefer .exe over .dll, then select the most recently modified binary
+            return candidateFiles
+                .OrderByDescending(f => f.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(File.GetLastWriteTimeUtc)
+                .First();
         }
 
         private static void PrintConsoleSummary(Rank.SuspiciousnessReportSnapshot snapshot, int requestedCount)
@@ -764,7 +885,7 @@ namespace SBFLApp
             public FileInfo? ProjectUnderTestFile { get; set; }
             public bool ResetRequested { get; set; }
             public bool VerboseRequested { get; set; }
-            public bool CleanupRequested {  get; set; }
+            public bool CleanupRequested { get; set; }
             public int? TopResults { get; set; }
             public Rank.SuspiciousnessReportFormat ReportFormat { get; set; }
             public string? ReportPath { get; set; }

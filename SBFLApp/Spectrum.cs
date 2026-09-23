@@ -6,6 +6,10 @@ namespace SBFLApp
 {
     internal class Spectrum
     {
+        private static readonly CSharpParseOptions _parseOptions = new(
+            documentationMode: DocumentationMode.None
+        );
+
         /// <summary>
         /// Reads the source into a syntax tree representation.  Searches for the method to modify.
         /// If the method is located, then coverage data is written to each statement in the method.
@@ -20,7 +24,7 @@ namespace SBFLApp
             var sourceCode = File.ReadAllText(filePath);
 
             // Create an abstract syntax tree representation of the source code.
-            var tree = CSharpSyntaxTree.ParseText(sourceCode);
+            var tree = CSharpSyntaxTree.ParseText(sourceCode, _parseOptions);
             var root = tree.GetRoot();
 
             // Search for the method to modify.
@@ -70,7 +74,7 @@ namespace SBFLApp
 
             // Read the file and convert to a syntax tree node.
             var sourceCode = File.ReadAllText(filePath);
-            var tree = CSharpSyntaxTree.ParseText(sourceCode);
+            var tree = CSharpSyntaxTree.ParseText(sourceCode, _parseOptions);
             var root = tree.GetRoot();
 
             // Utilize a coverage injector object to inject coverage and then write the file back to the file system.
@@ -131,7 +135,7 @@ namespace SBFLApp
                 Console.WriteLine($"Processing file: {file}");
 
                 var sourceCode = File.ReadAllText(file);
-                var tree = CSharpSyntaxTree.ParseText(sourceCode);
+                var tree = CSharpSyntaxTree.ParseText(sourceCode, _parseOptions);
                 var root = tree.GetRoot();
 
                 var rewriter = new CoverageInjector(sourceFilePath: file);
@@ -151,7 +155,7 @@ namespace SBFLApp
         {
 
             var originalText = File.ReadAllText(file);
-            var tree = CSharpSyntaxTree.ParseText(originalText);
+            var tree = CSharpSyntaxTree.ParseText(originalText, _parseOptions);
             var root = tree.GetRoot();
             SyntaxNode? cleanedRoot = rewriter.Visit(root);
 
