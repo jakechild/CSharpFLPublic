@@ -10,9 +10,10 @@ namespace SBFLApp
     class Program
     {
         private const int DefaultSummaryCount = 10;
-        private static readonly string CoverageDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Coverage");
-        private static readonly string TemporaryCoverageFileName = Path.Combine(CoverageDirectory, "__sbfl_current_test.coverage.tmp");
-        private static readonly string TestConfigFileName = Path.Combine(Path.GetTempPath(), "testconfig.json");
+        private static string CoverageDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Coverage");
+        private const string temporaryCoverageFileName = "__sbfl_current_test.coverage.tmp";
+        private static string TemporaryCoverageFileName = Path.Combine(CoverageDirectory, temporaryCoverageFileName);
+        private static string TestConfigFileName = Path.Combine(Path.GetTempPath(), "testconfig.json");
 
         private static readonly CSharpParseOptions _parseOptions = new(
             documentationMode: DocumentationMode.None
@@ -342,6 +343,8 @@ namespace SBFLApp
                 // Get the coverage filename.
                 string coverageFileName = Path.Combine(CoverageDirectory, $"{test.CoverageFileStem}.coverage");
 
+                WaitForFileToRelease(TemporaryCoverageFileName, TimeSpan.FromMinutes(1));
+
                 // Run the test silently
                 bool passed = RunTest(solutionDirectory, testProjectPath, test.FullyQualifiedName, verbose);
                 testPassFailData[test.CoverageFileStem] = passed;
@@ -544,6 +547,19 @@ namespace SBFLApp
 
         private static void PromoteTemporaryCoverageFile(string temporaryCoverageFileName, string finalCoverageFileName)
         {
+            if (!File.Exists(temporaryCoverageFileName))
+            {
+                ConsoleLogger.Warning($"No coverage data was generated, {finalCoverageFileName} was not created.");
+                return;
+            }
+
+            // Wait up to 1 minute for the writer process to finish and release the handle
+            if (!WaitForFileToRelease(temporaryCoverageFileName, TimeSpan.FromMinutes(1)))
+            {
+                ConsoleLogger.Warning($"Timed out waiting for '{temporaryCoverageFileName}' to be released.");
+                return;
+            }
+
             try
             {
                 if (File.Exists(finalCoverageFileName))
@@ -551,23 +567,45 @@ namespace SBFLApp
                     File.Delete(finalCoverageFileName);
                 }
 
-                if (File.Exists(temporaryCoverageFileName))
-                {
-                    File.Move(temporaryCoverageFileName, finalCoverageFileName);
-                }
-                else
-                {
-                    ConsoleLogger.Warning($"No coverage data was generated, {finalCoverageFileName} was not created.");
-                }
+                File.Move(temporaryCoverageFileName, finalCoverageFileName);
             }
-            catch (IOException ex)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                ConsoleLogger.Warning($"Failed to move coverage file '{temporaryCoverageFileName}' to '{finalCoverageFileName}': {ex.Message}");
+                ConsoleLogger.Warning($"Failed to move coverage file: {ex.Message}");
             }
-            catch (UnauthorizedAccessException ex)
+        }
+
+        public static bool WaitForFileToRelease(
+            string filePath,
+            TimeSpan timeout,
+            TimeSpan? retryInterval = null)
+        {
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             {
-                ConsoleLogger.Warning($"Failed to move coverage file '{temporaryCoverageFileName}' to '{finalCoverageFileName}': {ex.Message}");
+                return false;
             }
+
+            var delay = retryInterval ?? TimeSpan.FromMilliseconds(500);
+            var stopwatch = Stopwatch.StartNew();
+
+            while (stopwatch.Elapsed < timeout)
+            {
+                try
+                {
+                    // Attempt exclusive access: if this succeeds, no other handle is open
+                    using (var stream = File.Open(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                    {
+                        return true; // Lock acquired and successfully released upon exiting 'using'
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // The file is still held by another process or locked by the OS
+                    Thread.Sleep(delay);
+                }
+            }
+
+            return false; // Timed out before the file was released
         }
 
         private static bool ShouldSkipProjectFile(string filePath)
@@ -677,7 +715,6 @@ namespace SBFLApp
                 string projectDir = Path.GetDirectoryName(Path.GetFullPath(testProjectPath)) ?? string.Empty;
                 string projectName = Path.GetFileNameWithoutExtension(testProjectPath);
 
-                // 1. Locate the compiled test output binary
                 string binaryPath = FindTestBinary(solutionDirectory, projectName, configuration);
                 if (string.IsNullOrEmpty(binaryPath))
                 {
@@ -685,7 +722,6 @@ namespace SBFLApp
                     return false;
                 }
 
-                // 2. Prepare execution (run natively on Windows if .exe, otherwise via dotnet <file>.dll)
                 bool isNativeExe = binaryPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
                 string fileName = isNativeExe ? binaryPath : "dotnet";
 
@@ -753,7 +789,7 @@ namespace SBFLApp
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
 
-                if (!process.WaitForExit(30 * 1000))
+                if (!process.WaitForExit(240 * 1000))
                 {
                     ConsoleLogger.Warning("Process timed out. Killing the process tree...");
                     process.Kill(entireProcessTree: true);
@@ -762,7 +798,7 @@ namespace SBFLApp
 
                 process.WaitForExit();
 
-                if (!verbose && process.ExitCode != 0)
+                if (process.ExitCode != 0)
                 {
                     string err = errorBuilder.ToString();
                     string outStr = outputBuilder.ToString();

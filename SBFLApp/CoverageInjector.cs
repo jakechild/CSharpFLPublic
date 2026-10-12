@@ -120,8 +120,7 @@ namespace SBFLApp
             foreach (var statement in node.Statements)
             {
                 // Skip instrumentation if already logged
-                var statementText = statement.ToString();
-                if (statementText.Contains("System.IO.File.AppendAllText"))
+                if (CoverageExists(statement))
                 {
                     newStatements.Add(statement);
                     continue;
@@ -141,9 +140,7 @@ namespace SBFLApp
 
                 var coverageFilePath = _coverageFileName ?? $"{_currentMethodName}.coverage";
 
-                var logStatement = SyntaxFactory.ParseStatement(
-                    $"System.IO.File.AppendAllText(\"{EscapeString(coverageFilePath)}\", \"{guid}\" + System.Environment.NewLine);"
-                );
+                var logStatement = GetCoverageStatement(guid, coverageFilePath);
 
                 var qualifiedName = GetQualifiedMethodName();
                 if (!string.IsNullOrEmpty(qualifiedName))
@@ -161,7 +158,12 @@ namespace SBFLApp
             return node.WithStatements(SyntaxFactory.List(newStatements));
         }
 
-        
+        private static StatementSyntax GetCoverageStatement(string guid, string coverageFilePath)
+        {
+            return SyntaxFactory.ParseStatement(
+                $"new System.Action(() => {{ using var m = new System.Threading.Mutex(false, @\"Global\\sbfl_coverage_lock\"); if (m.WaitOne(3000)) {{ try {{ System.IO.File.AppendAllText(\"{EscapeString(coverageFilePath)}\", \"{guid}\" + System.Environment.NewLine); }} catch {{ }} finally {{ m.ReleaseMutex(); }} }} }})();");
+        }
+
 
         public override SyntaxNode VisitSwitchSection(SwitchSectionSyntax node)
         {
@@ -170,8 +172,7 @@ namespace SBFLApp
             foreach (var statement in node.Statements)
             {
                 // 1. Skip instrumentation if already logged
-                var statementText = statement.ToString();
-                if (statementText.Contains("System.IO.File.AppendAllText"))
+                if (CoverageExists(statement))
                 {
                     newStatements.Add(statement);
                     continue;
@@ -190,9 +191,7 @@ namespace SBFLApp
                 var coverageFilePath = _coverageFileName ?? $"{_currentMethodName}.coverage";
 
                 // 3. Create log statement
-                var logStatement = SyntaxFactory.ParseStatement(
-                    $"System.IO.File.AppendAllText(\"{EscapeString(coverageFilePath)}\", \"{guid}\" + System.Environment.NewLine);"
-                );
+                var logStatement = GetCoverageStatement(guid, coverageFilePath);
 
                 // 4. Save mapping
                 var qualifiedName = GetQualifiedMethodName();
@@ -213,6 +212,17 @@ namespace SBFLApp
 
             // Return the updated switch section with the instrumented statements
             return node.WithStatements(SyntaxFactory.List(newStatements));
+        }
+
+        private static bool CoverageExists(StatementSyntax statement)
+        {
+            var statementText = statement.ToString();
+            if (statementText.Contains("using var m = new System.Threading.Mutex"))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         public override SyntaxNode VisitIfStatement(IfStatementSyntax node)
