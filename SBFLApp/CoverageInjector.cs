@@ -161,7 +161,7 @@ namespace SBFLApp
         private static StatementSyntax GetCoverageStatement(string guid, string coverageFilePath)
         {
             return SyntaxFactory.ParseStatement(
-                $"new System.Action(() => {{ using var m = new System.Threading.Mutex(false, @\"Global\\sbfl_coverage_lock\"); if (m.WaitOne(3000)) {{ try {{ System.IO.File.AppendAllText(\"{EscapeString(coverageFilePath)}\", \"{guid}\" + System.Environment.NewLine); }} catch {{ }} finally {{ m.ReleaseMutex(); }} }} }})();");
+                $"new System.Action(() => {{ using var m = new System.Threading.Mutex(false, @\"Global\\sbfl_coverage_lock\"); if (m.WaitOne(3000)) {{ try {{ global::System.IO.File.AppendAllText(\"{EscapeString(coverageFilePath)}\", \"{guid}\" + global::System.Environment.NewLine); }} catch {{ }} finally {{ m.ReleaseMutex(); }} }} }})();");
         }
 
 

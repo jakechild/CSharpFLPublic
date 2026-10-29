@@ -16,7 +16,8 @@ namespace SBFLApp
         private static string TestConfigFileName = Path.Combine(Path.GetTempPath(), "testconfig.json");
 
         private static readonly CSharpParseOptions _parseOptions = new(
-            documentationMode: DocumentationMode.None
+            documentationMode: DocumentationMode.None,
+            preprocessorSymbols: new[] { "DEBUG", "FEATURE_DEFAULT_INTERFACE", "FEATURE_SPAN"}
         );
 
         static void Main(string[] args)
