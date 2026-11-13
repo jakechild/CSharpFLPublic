@@ -30,6 +30,8 @@ jobs:
 
       - name: Test
         run: dotnet test --no-build
+        env:
+          DOTNET_TEST_RUNNER: Microsoft.Testing.Platform
 
       - name: Configure git
         run: |
