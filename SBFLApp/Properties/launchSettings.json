@@ -2,7 +2,7 @@
   "profiles": {
     "SBFLApp": {
       "commandName": "Project",
-      "commandLineArgs": "C:\\Repos\\ThesisProjects\\ILSpy ILSpy.Tests ILSpy"
+      "commandLineArgs": "\"..\\..\\..\\..\\..\\CSharpFL\" MathApp.Tests MathApp --reset"
     }
   }
 }
