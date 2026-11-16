@@ -225,7 +225,7 @@ namespace SBFLApp
             return false;
         }
 
-        public override SyntaxNode VisitIfStatement(IfStatementSyntax node)
+        public override SyntaxNode? VisitIfStatement(IfStatementSyntax node)
         {
             // 1. Handle the "then" statement (if body)
             var updatedNode = node;
